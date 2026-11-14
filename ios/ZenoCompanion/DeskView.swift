@@ -21,6 +21,14 @@ struct DeskView: View {
     @State private var live: LiveFeed?
     @State private var gestures = HandGestures()
     #if DEBUG
+    @State private var showPanel = UserDefaults.standard.bool(forKey: "showPanel")   // `-showPanel 1`
+    #else
+    @State private var showPanel = false
+    #endif
+    @State private var panelConfirmation: String?
+    /// Bumped by a pinch on the graphs screen; the graphs switch between 2 and 10 minutes.
+    @State private var graphsPinches = 0
+    #if DEBUG
     @State private var showGraphs = UserDefaults.standard.bool(forKey: "showGraphs")   // `-showGraphs 1`
     #else
     @State private var showGraphs = false
@@ -39,9 +47,10 @@ struct DeskView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
+            // Graphs sit to the right of home: they slide in from the right, home slides back from the left.
             if !isNight, showGraphs, let live {
-                GraphsView(live: live)
-                    .transition(.opacity)
+                GraphsView(live: live, gestures: gestures, pinches: graphsPinches)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             } else if !isNight {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let call = feed.activeCall(at: context.date)
@@ -60,7 +69,7 @@ struct DeskView: View {
                     .padding(.vertical, DeskView.driftRange + 4)
                 }
                 .offset(offset)
-                .transition(.opacity)
+                .transition(.move(edge: .leading).combined(with: .opacity))
             }
 
             if !isNight && !showGraphs {
@@ -68,6 +77,12 @@ struct DeskView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .padding(.top, 6)
                     .padding(.trailing, DeskView.driftRange + 4)
+                    .allowsHitTesting(false)
+            }
+
+            if showPanel && !isNight {
+                FanPanel(live: live, confirmation: panelConfirmation)
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
                     .allowsHitTesting(false)
             }
 
@@ -116,6 +131,39 @@ struct DeskView: View {
             applyBrightness()
         }
         .onChange(of: scenePhase) { updateLive() }
+        // Gestures (palm first): swipe left = next screen (graphs), swipe right = back home,
+        // pinch on the graphs = 2 / 10 minutes, palm held 2 s = fan panel (which then takes the next gesture).
+        .onChange(of: gestures.lastEvent?.at) {
+            guard let event = gestures.lastEvent, !isNight, !showSettings else { return }
+            if showPanel {
+                switch event.gesture {
+                case .swipeLeft: setFan("on")
+                case .swipeRight: setFan("auto")
+                case .pinch: withAnimation { showPanel = false }
+                default: break
+                }
+                return
+            }
+            switch event.gesture {
+            case .hold:
+                panelConfirmation = nil
+                withAnimation(.easeOut(duration: 0.25)) { showPanel = true }
+            case .swipeLeft where !showGraphs:
+                withAnimation(.easeInOut(duration: 0.35)) { showGraphs = true }
+            case .swipeRight where showGraphs:
+                withAnimation(.easeInOut(duration: 0.35)) { showGraphs = false }
+            case .pinch where showGraphs:
+                graphsPinches += 1
+            default:
+                break
+            }
+        }
+        // The fan panel closes itself if nothing is chosen.
+        .task(id: showPanel) {
+            guard showPanel else { return }
+            try? await Task.sleep(for: .seconds(HandGestures.panelFor))
+            if !Task.isCancelled { withAnimation { showPanel = false } }
+        }
         .task(id: showGraphs) {
             guard showGraphs else { return }
             try? await Task.sleep(for: DeskView.graphsTimeout)
@@ -126,6 +174,17 @@ struct DeskView: View {
                 offset = CGSize(width: .random(in: -DeskView.driftRange...DeskView.driftRange),
                                 height: .random(in: -DeskView.driftRange...DeskView.driftRange))
             }
+        }
+    }
+
+    /// Fan choice from the panel: sent to the box, confirmed on screen for a moment, then the panel closes.
+    private func setFan(_ choice: String) {
+        panelConfirmation = choice == "on" ? "Fan ON ✓" : "Fan AUTO ✓"
+        Task {
+            await live?.control(fan: choice)
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation { showPanel = false }
+            panelConfirmation = nil
         }
     }
 

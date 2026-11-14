@@ -4,6 +4,9 @@ import SwiftUI
 /// Live graphs of everything the black box measures. Double-tap (or swipe) to go back.
 struct GraphsView: View {
     let live: LiveFeed
+    var gestures: HandGestures?
+    /// Counts pinches on this screen; each one switches between 2 and 10 minutes.
+    var pinches = 0
 
     // Fan thresholds on the box (firmware v4): on at 38 °C, off again at 35 °C.
     static let fanOn = 38.0
@@ -50,6 +53,7 @@ struct GraphsView: View {
         .background(Color.black)
         .monospaced()
         .environment(\.colorScheme, .dark)
+        .onChange(of: pinches) { tenMinutes.toggle() }
     }
 
     private var header: some View {
@@ -66,7 +70,11 @@ struct GraphsView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 170)
-            Text("double-tap to go back").foregroundStyle(DayPanel.faint)
+            if let gestures {
+                GestureBadge(gestures: gestures, compact: true)
+                    .frame(width: 118, alignment: .leading)
+            }
+            Text("back: swipe →").foregroundStyle(DayPanel.faint).lineLimit(1).fixedSize()
         }
         .font(.caption)
     }

@@ -8,11 +8,15 @@ import Vision
 /// nothing is saved or sent. It runs at a low frame rate, only while the desk screen is awake.
 @MainActor @Observable
 final class HandGestures {
-    enum Gesture: String { case none, palm, pinch, swipeLeft = "swipe left", swipeRight = "swipe right" }
+    enum Gesture: String { case none, palm, pinch, swipeLeft = "swipe left", swipeRight = "swipe right", hold = "palm held" }
 
     static let framesPerSecond: Int32 = 10
     /// An open palm "wakes" gestures for this long; swipes and pinches outside it are ignored.
     static let armedFor: TimeInterval = 4
+    /// Holding the palm this long is its own gesture (opens the fan panel).
+    static let holdFor: TimeInterval = 2
+    /// After a hold, the next gesture counts for this long without another palm (to use the panel).
+    static let panelFor: TimeInterval = 6
 
     /// The pose seen in the latest frame (palm, pinch or none).
     private(set) var pose = Gesture.none
@@ -30,6 +34,10 @@ final class HandGestures {
     private(set) var armedUntil: Date?
     /// Swipes and pinches seen while not armed: the false triggers the palm gate stopped.
     private(set) var ignored = 0
+    /// When the current unbroken run of palm frames began (nil when no palm is showing).
+    private var palmHeldSince: Date?
+    /// The current palm has already produced a "palm held" event.
+    private var holdFired = false
 
     func isArmed(at date: Date = .now) -> Bool { armedUntil.map { date < $0 } ?? false }
 
@@ -116,16 +124,33 @@ final class HandGestures {
         handX = x
         let now = Date.now
         if pose == .palm {
-            // The wake gesture: arms swipes and pinches.
-            if !isArmed(at: now) { lastEvent = (.palm, now) }
-            armedUntil = now.addingTimeInterval(Self.armedFor)
+            // The wake gesture: arms swipes and pinches. It has to be held for half a second, and not
+            // within 1.5 s of the last swipe or pinch, so a hand settling after a gesture can't re-arm.
+            if palmHeldSince == nil { palmHeldSince = now }
+            let settled = lastEvent.map { $0.gesture == .palm || now.timeIntervalSince($0.at) > 1.5 } ?? true
+            let held = now.timeIntervalSince(palmHeldSince!)
+            if settled, held >= Self.holdFor, !holdFired {
+                // Palm held for 2 s: its own gesture. Gestures stay live long enough to use the panel.
+                holdFired = true
+                lastEvent = (.hold, now)
+                armedUntil = now.addingTimeInterval(Self.panelFor)
+            } else if settled, held >= 0.5, !holdFired {
+                if !isArmed(at: now) { lastEvent = (.palm, now) }
+                armedUntil = now.addingTimeInterval(Self.armedFor)
+            }
+        } else {
+            palmHeldSince = nil
+            holdFired = false
         }
         let event = swipe ?? (pose == .pinch ? .pinch : nil)
         guard let event else { return }
         guard isArmed(at: now) else { ignored += 1; return }
         if event == .pinch, lastEvent?.gesture == .pinch, now.timeIntervalSince(lastEvent!.at) < 1.5 { return }
         lastEvent = (event, now)
-        armedUntil = now.addingTimeInterval(Self.armedFor)
+        // One palm buys one gesture: "ready" ends straight away, so a stray movement afterwards can't
+        // trigger anything. The next gesture needs a fresh palm.
+        armedUntil = nil
+        palmHeldSince = nil
     }
 }
 
@@ -143,7 +168,6 @@ private final class FrameReader: NSObject, AVCaptureVideoDataOutputSampleBufferD
     /// James's trained model; nil only if it fails to load, then the hand-written rules below are used.
     private let model: GestureModel? = UserDefaults.standard.bool(forKey: "gestureRules") ? nil : GestureModel()
     var usesModel: Bool { model != nil }
-    private var modelLastSwipe: TimeInterval = 0
     /// Recent wrist positions (x across the image, 0–1) for spotting swipes.
     private var track: [(x: CGFloat, t: TimeInterval)] = []
     private var lastSwipe: TimeInterval = 0
@@ -162,18 +186,20 @@ private final class FrameReader: NSObject, AVCaptureVideoDataOutputSampleBufferD
               let wrist = points[.wrist], wrist.confidence > 0.2,
               let knuckles = points[.middleMCP], knuckles.confidence > 0.2,
               hypot(wrist.location.x - knuckles.location.x, wrist.location.y - knuckles.location.y) > 0.07 else {
-            if let last = track.last, now - last.t > 0.4 { track.removeAll() }
-            if useModel(GestureRecorder.noHand, x: nil, now: now) { return }
+            if let last = track.last, now - last.t > 0.5 { track.removeAll() }
+            if useModel(GestureRecorder.noHand, x: nil, swipe: nil, now: now) { return }
             report(.none, swipe: nil, x: nil, features: GestureRecorder.noHand)
             return
         }
 
         let features = GestureRecorder.features(points, wrist: wrist.location, knuckles: knuckles.location,
                                                 chirality: hand.chirality)
-        if useModel(features, x: Double(knuckles.location.x), now: now) { return }
 
-        // Swipe: the hand travels a sixth of the frame sideways within 0.8 s. Uses the middle of
-        // the hand (or the wrist), which Vision finds more reliably than fingertips in motion blur.
+        // Swipe: the hand travels a sixth of the frame sideways within 0.8 s, measured from where it was
+        // to where it is now. The track survives short blur gaps (a fast hand is often lost for a few
+        // frames mid-swipe), so the big jump across the gap still counts. Uses the knuckles, which Vision
+        // finds more reliably than fingertips in motion blur. Direction comes from this measurement, not
+        // the model: with most of a fast swipe blurred, the model sees too few frames to judge direction.
         let x = knuckles.location.x
         track.append((x, now))
         track.removeAll { now - $0.t > 0.8 }
@@ -184,6 +210,7 @@ private final class FrameReader: NSObject, AVCaptureVideoDataOutputSampleBufferD
             lastSwipe = now
             track.removeAll()
         }
+        if useModel(features, x: Double(x), swipe: swipe, now: now) { return }
         report(Self.pose(points, wrist: wrist.location), swipe: swipe, x: Double(x),
                features: GestureRecorder.features(points, wrist: wrist.location, knuckles: knuckles.location,
                                                   chirality: hand.chirality))
@@ -214,25 +241,18 @@ private final class FrameReader: NSObject, AVCaptureVideoDataOutputSampleBufferD
     }
 
     /// The trained model's decision for this frame. Returns false when there's no model (rules run instead).
-    /// It must be at least 80% sure of a pose, held for 2 frames, and 85% sure of a swipe; a swipe then
-    /// can't fire again for 1 s. The palm gate in HandGestures still applies on top.
-    private func useModel(_ features: [Float], x: Double?, now: TimeInterval) -> Bool {
+    /// It must be at least 80% sure of a pose, held for 2 frames. Swipes are passed in from the
+    /// movement measurement. The palm gate in HandGestures still applies on top.
+    private func useModel(_ features: [Float], x: Double?, swipe: HandGestures.Gesture?, now: TimeInterval) -> Bool {
         guard let model else { return false }
         guard let probs = model.add(features), let best = probs.indices.max(by: { probs[$0] < probs[$1] }) else {
-            onResult?(.none, nil, x, features)
+            onResult?(.none, swipe, x, features)
             return true
         }
+        // The model decides hand shapes (palm, pinch, nothing); swipes come from the measured movement.
         let gesture = GestureModel.labels[best]
-        var swipe: HandGestures.Gesture?
         var pose = HandGestures.Gesture.none
-        switch gesture {
-        case .swipeLeft, .swipeRight:
-            if probs[best] >= 0.85, now - modelLastSwipe > 1.0 { swipe = gesture; modelLastSwipe = now }
-        case .palm, .pinch:
-            if probs[best] >= 0.8 { pose = gesture }
-        default:
-            break
-        }
+        if gesture == .palm || gesture == .pinch, probs[best] >= 0.8 { pose = gesture }
         sameCount = pose == lastPose ? sameCount + 1 : 1
         lastPose = pose
         onResult?(sameCount >= 2 ? pose : .none, swipe, x, features)
@@ -252,6 +272,8 @@ import SwiftUI
 /// Step 1 only: a small label showing what the camera sees, so James can check it before gestures do anything.
 struct GestureBadge: View {
     let gestures: HandGestures
+    /// Compact: status word only, fixed width, so it never shifts what's next to it (the graphs header).
+    var compact = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { context in
@@ -259,17 +281,20 @@ struct GestureBadge: View {
                 Image(systemName: gestures.running ? "hand.raised" : "hand.raised.slash")
                 if let problem = gestures.problem {
                     Text(problem)
-                } else if let event = gestures.lastEvent, event.gesture != .palm, context.date.timeIntervalSince(event.at) < 2 {
+                } else if let event = gestures.lastEvent, event.gesture != .palm, event.gesture != .hold,
+                          context.date.timeIntervalSince(event.at) < 2 {
                     Text(event.gesture.rawValue).foregroundStyle(DayPanel.accent)
                 } else if gestures.isArmed(at: context.date) {
                     Text("ready").foregroundStyle(DayPanel.accent)
                 } else {
                     Text("show palm")
                 }
-                if gestures.ignored > 0 { Text("· \(gestures.ignored) ignored") }
-                Text(gestures.usesModel ? "· ml" : "· rules")
+                if !compact {
+                    if gestures.ignored > 0 { Text("· \(gestures.ignored) ignored") }
+                    Text(gestures.usesModel ? "· ml" : "· rules")
+                }
                 // Tuning aid: where the hand is, 0 = your left … 1 = your right.
-                if let x = gestures.handX { Text(String(format: "x %.2f", x)) }
+                if !compact, let x = gestures.handX { Text(String(format: "x %.2f", x)) }
             }
             .font(.system(.caption2, design: .monospaced))
             .foregroundStyle(DayPanel.faint)

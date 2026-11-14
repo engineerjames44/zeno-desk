@@ -36,5 +36,11 @@ The palm gate (gestures only count for 4 s after an open palm) sits on top, so r
 
 - Class imbalance: lots of "no gesture" made the first models answer "nothing"; class weights fixed it.
 - Data beats tuning: swipe recordings that included the return stroke taught the model the wrong direction.
+- Motion blur: at 10 fps a fast swipe is mostly blur, so Vision loses the hand mid-swipe and the model only
+  sees 3–4 frames of it. Live, it mixed up swipe directions. The phone now runs a hybrid: the model decides
+  hand shapes (palm, pinch, nothing), and swipe direction is measured from where the hand was before the blur
+  to where it reappears.
+- One palm buys one gesture: "ready" ends after each swipe or pinch, and re-arming needs a 1.5 s pause plus a
+  palm held for half a second, so a hand settling after a gesture can't fire anything.
 - Small test sets lie: scoring on two recordings per gesture swung results between 0% and 100%;
   cross-validation over every recording gave stable numbers.
