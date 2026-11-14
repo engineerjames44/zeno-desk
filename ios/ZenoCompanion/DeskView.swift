@@ -19,6 +19,7 @@ struct DeskView: View {
     @State private var feed = FeedStore()
     @State private var weather = Weather()
     @State private var live: LiveFeed?
+    @State private var gestures = HandGestures()
     #if DEBUG
     @State private var showGraphs = UserDefaults.standard.bool(forKey: "showGraphs")   // `-showGraphs 1`
     #else
@@ -62,6 +63,17 @@ struct DeskView: View {
                 .transition(.opacity)
             }
 
+            if !isNight && !showGraphs {
+                GestureBadge(gestures: gestures)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, 6)
+                    .padding(.trailing, DeskView.driftRange + 4)
+                    .allowsHitTesting(false)
+            }
+
+            RecordingOverlay(recorder: gestures.recorder)
+                .allowsHitTesting(false)
+
             DeskGestures(
                 onSettings: { showSettings = true },
                 onDoubleTap: { if !showSettings && !isNight { withAnimation(.easeInOut(duration: 0.3)) { showGraphs.toggle() } } },
@@ -75,11 +87,21 @@ struct DeskView: View {
         .onAppear {
             applyBrightness()
             telemetry.start()
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "stress") { Stress.start() }
+            // Layout checks in the Simulator: `-orientation left` or `-orientation right`.
+            if let side = UserDefaults.standard.string(forKey: "orientation"),
+               let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: side == "left" ? .landscapeLeft : .landscapeRight))
+            }
+            #endif
             weather.start()
             if live == nil { live = LiveFeed(telemetry: telemetry) }
             updateLive()
             if server == nil {
                 server = FeedServer(store: feed)
+                server?.recorder = gestures.recorder
+                server?.gestures = gestures
                 server?.start()
             }
         }
@@ -111,9 +133,14 @@ struct DeskView: View {
     /// The 60 s telemetry (which drives the charging rule) runs regardless.
     private func updateLive() {
         if scenePhase == .active && !isNight { live?.start() } else { live?.stop() }
+        // The camera only watches for gestures while the desk is awake and on screen.
+        if scenePhase == .active && !isNight { gestures.start() } else { gestures.stop() }
     }
 
     static func nightNow(_ date: Date = .now) -> Bool {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "forceDay") { return false }   // `-forceDay 1` for tests
+        #endif
         let hour = Calendar.current.component(.hour, from: date)
         return hour >= nightStartHour || hour < nightEndHour
     }

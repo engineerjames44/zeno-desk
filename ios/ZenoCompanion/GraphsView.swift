@@ -46,7 +46,7 @@ struct GraphsView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .background(Color.black)
         .monospaced()
         .environment(\.colorScheme, .dark)
@@ -203,7 +203,7 @@ private struct OnOffTile: View {
             .transaction { $0.animation = nil }
         }
         .padding(8)
-        .frame(height: 52)
+        .frame(height: 42)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.06)))
     }
 }
@@ -213,7 +213,7 @@ private struct ControlsTile: View {
     let live: LiveFeed
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Test · auto again in 10 min").font(.caption2).foregroundStyle(DayPanel.faint)
             row("Fan", current: live.modes.fan, on: live.latest?.fan) { await live.control(fan: $0) }
             row("Charge", current: live.modes.charge, on: live.latest?.charging) { await live.control(charge: $0) }
@@ -228,17 +228,20 @@ private struct ControlsTile: View {
         .disabled(live.source != .live)
     }
 
+    /// One line per switch, so the tile stays short enough for the whole screen to fit in landscape.
     private func row(_ name: String, current: String, on: Bool?, send: @escaping (String) async -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("\(name): \(on.map { $0 ? "on" : "off" } ?? "–") (\(current))")
+        HStack(spacing: 6) {
+            Text("\(name) \(on.map { $0 ? "on" : "off" } ?? "–")")
                 .font(.caption).foregroundStyle(DayPanel.text)
-            HStack(spacing: 6) {
-                ForEach(["on", "off", "auto"], id: \.self) { choice in
-                    Button(choice) { Task { await send(choice) } }
-                        .font(.caption2)
-                        .buttonStyle(.bordered)
-                        .tint(choice == "auto" ? .gray : DayPanel.accent)
+                .frame(width: 78, alignment: .leading)
+            ForEach(["on", "off", "auto"], id: \.self) { choice in
+                Button { Task { await send(choice) } } label: {
+                    Text(choice).lineLimit(1).fixedSize()
                 }
+                    .font(.caption2)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(choice == current || (choice != "auto" && current == "manual" && (on == true) == (choice == "on")) ? DayPanel.accent : .gray)
             }
         }
     }

@@ -14,6 +14,8 @@ news and phone calls, and live numbers from the Zeno Desk charge controller (ESP
 - **Live numbers:** polls the box 10 times a second (`GET /live`, firmware v4; falls back to `/stats` once a second).
 - **Graphs:** double-tap the screen for live charts (current, volts, power, phone temp with fan bands, battery);
   double-tap or swipe to go back. Closes by itself after 5 min.
+- **Gestures:** the front camera watches for an open palm (wakes gestures for 4 s), then pinch or swipe,
+  using a small model trained on James's own recordings ([../ml](../ml/README.md)). Frames stay on the phone.
 - **Hidden settings:** hold three fingers on the screen for 2 s (box address, last send, battery details).
 
 ## Build and install
@@ -34,7 +36,10 @@ Signed with a free developer account, so the install stops launching after 7 day
 - `fake_box.py`: a stand-in black box on the Mac.
 - `PHONE=<phone-ip> tools/send_feed.sh news|call|clear`: push a test feed to the phone. Always finish with `clear`.
 - `stage_call.py <phone-ip>`: play a made-up phone call on the desk, then clear it.
-- Debug builds accept `-weatherCode <WMO code> -weatherDay 0|1` to preview any sky.
+- Debug builds accept `-weatherCode <WMO code> -weatherDay 0|1` to preview any sky, `-forceDay 1`,
+  `-showGraphs 1`, `-orientation left|right`, and `-stress 1`. They also answer the dashboard's test endpoints
+  (`/stress`, `/llm`, `/metrics`, `/record`, `/hand`); release builds don't include any of them.
+- `../tools/dashboard`: the live Mac dashboard (box readings, phone CPU and heat, test switches, gesture recording).
 
 ## Assets
 

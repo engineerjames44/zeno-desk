@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zeno Desk Live</title>
+<style>
+  :root { --bg:#000; --tile:#0f0f10; --text:#bdbdbd; --faint:#6b6b6b; --orange:#f5a65b; --pink:#ff4f7b;
+          --cyan:#33c7ff; --yellow:#ffd60a; --green:#30d158; --blue:#0a84ff; --red:#ff453a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px ui-monospace, "SF Mono", Menlo, monospace; padding:20px; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+  h1 { font-size:16px; font-weight:500; margin:0; letter-spacing:.08em; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--red); }
+  .faint { color:var(--faint); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:12px; }
+  .tile { background:var(--tile); border-radius:12px; padding:12px 14px; }
+  .tile .label { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; }
+  .tile .value { font-size:30px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .tile .sub { font-size:12px; color:var(--faint); margin-top:2px; }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:10px; }
+  .chart { background:var(--tile); border-radius:12px; padding:10px 12px; }
+  .chart .label { font-size:11px; color:var(--faint); margin-bottom:6px; display:flex; justify-content:space-between; }
+  canvas { width:100%; height:160px; display:block; }
+  .controls { display:flex; gap:18px; flex-wrap:wrap; background:var(--tile); border-radius:12px; padding:12px 14px; margin-bottom:12px; align-items:center; }
+  .group { display:flex; gap:6px; align-items:center; }
+  .group .name { color:var(--faint); font-size:12px; margin-right:4px; min-width:58px; }
+  button { font:inherit; font-size:13px; color:var(--text); background:#1d1d1f; border:1px solid #2c2c2e; border-radius:8px; padding:6px 12px; cursor:pointer; }
+  button:hover { border-color:#48484a; }
+  button.active { background:#3a2a17; border-color:var(--orange); color:var(--orange); }
+  #msg { color:var(--faint); font-size:12px; }
+  .llm { background:var(--tile); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+  .llm .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  select { font:inherit; font-size:13px; color:var(--text); background:#1d1d1f; border:1px solid #2c2c2e; border-radius:8px; padding:5px 6px; }
+  .handview { display:flex; gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  #handCam { width:240px; height:180px; background:#060607; border:1px solid #222; border-radius:8px; }
+  #handState { font-size:22px; }
+  #llmText { margin-top:8px; color:var(--text); font-size:13px; line-height:1.45; white-space:pre-wrap; min-height:1.4em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ZENO DESK · LIVE</h1>
+  <div class="dot" id="dot"></div>
+  <span id="rate" class="faint">connecting…</span>
+  <span class="faint" id="uptime"></span>
+</header>
+
+<div class="controls">
+  <div class="group"><span class="name">Fan</span>
+    <button data-k="fan" data-v="on">on</button><button data-k="fan" data-v="off">off</button><button data-k="fan" data-v="auto">auto</button></div>
+  <div class="group"><span class="name">Charging</span>
+    <button data-k="charge" data-v="on">on</button><button data-k="charge" data-v="off">off</button><button data-k="charge" data-v="auto">auto</button></div>
+  <div class="group"><span class="name">Phone stress</span>
+    <button id="stressOn">start</button><button id="stressOff">stop</button></div>
+  <span id="msg">manual fan/charging go back to auto after 10 min</span>
+</div>
+
+<div class="llm">
+  <div class="row"><span class="faint" style="font-size:12px;min-width:58px">Train gestures</span>
+    <button data-label="palm">palm</button><button data-label="pinch">pinch</button>
+    <button data-label="swipe_left">swipe left</button><button data-label="swipe_right">swipe right</button>
+    <button data-label="none">no gesture</button>
+    <select id="recSecs"><option value="10">10 s</option><option value="15" selected>15 s</option><option value="30">30 s</option><option value="60">1 min</option><option value="300">5 min</option><option value="600">10 min</option></select>
+    <button id="recGo">record</button><button id="recStop">stop</button><button id="recSave">save to Mac</button>
+    <span id="recState" class="faint">pick a gesture</span></div>
+  <div class="handview">
+    <canvas id="handCam"></canvas>
+    <div><div id="handState" class="value">–</div>
+      <div class="faint" style="font-size:12px;margin-top:4px;max-width:320px">What the phone's camera sees, as the 21 hand points only (no picture leaves the phone).
+        Mirrored like a mirror, so your right is on the right. "NOT SEEN" also covers hands too far away to count.</div></div>
+  </div>
+  <div class="faint" style="font-size:12px;margin-top:6px">Do each gesture with both hands across several recordings, at different distances and lighting. "No gesture" = normal desk stuff: typing, drinking, reaching, waving at someone.</div>
+</div>
+
+<div class="llm">
+  <div class="row"><span class="faint" style="font-size:12px;min-width:58px">LLM on phone</span>
+    <button id="llmOn">start</button><button id="llmOff">stop</button>
+    <span id="llmState" class="faint">–</span></div>
+  <div id="llmText"></div>
+</div>
+
+<div class="grid">
+  <div class="tile"><div class="label">Phone temp</div><div class="value" id="temp" style="color:var(--pink)">–</div><div class="sub" id="peak">peak –</div></div>
+  <div class="tile"><div class="label">iOS heat</div><div class="value" id="heat">–</div><div class="sub">nominal · fair · serious · critical</div></div>
+  <div class="tile"><div class="label">Battery</div><div class="value" id="battery" style="color:var(--green)">–</div><div class="sub" id="lastheard">phone report –</div></div>
+  <div class="tile"><div class="label">Current</div><div class="value" id="current" style="color:var(--orange)">–</div><div class="sub" id="volts">–</div></div>
+  <div class="tile"><div class="label">Power</div><div class="value" id="power" style="color:var(--yellow)">–</div><div class="sub" id="ambient">sensor –</div></div>
+  <div class="tile"><div class="label">App CPU (all cores = 100%)</div><div class="value" id="cpu" style="color:var(--cyan)">–</div><div class="sub" id="threads">–</div></div>
+  <div class="tile"><div class="label">GPU busy (stress kernel)</div><div class="value" id="gpu" style="color:var(--blue)">–</div><div class="sub" id="gpusub">LLM speed stands in for GPU while it runs</div></div>
+  <div class="tile"><div class="label">App memory</div><div class="value" id="mem">–</div><div class="sub">of about 6 GB on the 12 Pro</div></div>
+  <div class="tile"><div class="label">Fan · Charging</div><div class="value" id="outputs">–</div><div class="sub" id="modes">–</div></div>
+</div>
+
+<div class="charts">
+  <div class="chart"><div class="label"><span>Phone temperature °C · fan on 38, off 35</span><span id="win1"></span></div><canvas id="cTemp"></canvas></div>
+  <div class="chart"><div class="label"><span>Charging current mA</span></div><canvas id="cCurrent"></canvas></div>
+  <div class="chart"><div class="label"><span>Battery % (phone's 60 s report)</span></div><canvas id="cBattery"></canvas></div>
+  <div class="chart"><div class="label"><span>App CPU % · GPU busy % (stress kernel)</span></div><canvas id="cCpu"></canvas></div>
+</div>
+
+<script>
+const WINDOW_MS = 15 * 60 * 1000;           // graphs show the last 15 minutes
+const live = [];                            // {t, temp, current, fan, charging}
+const batt = [];                            // {t, battery}
+const usage = [];                           // {t, cpu, gpu}
+let peak = -Infinity, samples = [], lastN = null;
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+async function pollLive() {
+  try {
+    const r = await fetch('/api/live', {cache: 'no-store'});
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || r.status);
+    const now = Date.now();
+    if (d.n !== lastN) {
+      lastN = d.n;
+      samples.push(now);
+      live.push({t: now, temp: d.temp_c, current: d.current_ma, fan: d.fan, charging: d.relay === 'charging'});
+      while (live.length && now - live[0].t > WINDOW_MS) live.shift();
+    }
+    samples = samples.filter(t => now - t < 1000);
+    $('dot').style.background = css('--green');
+    $('rate').textContent = `${samples.length} Hz`;
+    $('uptime').textContent = d.ms != null ? `box up ${fmtDur(d.ms)}` : '';
+    if (d.temp_c != null) { peak = Math.max(peak, d.temp_c); $('temp').textContent = d.temp_c.toFixed(1) + '°'; $('peak').textContent = `peak ${peak.toFixed(1)}°`; }
+    $('current').textContent = d.current_ma != null ? `${Math.round(d.current_ma)} mA` : '–';
+    $('volts').textContent = d.bus_v != null ? `${d.bus_v.toFixed(2)} V` : '–';
+    $('power').textContent = d.power_mw != null ? `${Math.round(d.power_mw)} mW` : '–';
+    $('ambient').textContent = d.ambient_c != null ? `sensor itself ${d.ambient_c.toFixed(1)}°` : '';
+    $('outputs').innerHTML = `<span style="color:${d.fan ? css('--blue') : css('--faint')}">${d.fan ? 'fan ON' : 'fan off'}</span> · <span style="color:${d.relay === 'charging' ? css('--green') : css('--faint')}">${d.relay === 'charging' ? 'charging' : 'not charging'}</span>`;
+    $('modes').textContent = `fan ${d.fan_mode} · charge ${d.charge_mode}`;
+    modes = {fan: d.fan_mode === 'auto' ? 'auto' : 'manual', charge: d.charge_mode === 'auto' ? 'auto' : 'manual'};
+    lastLive = d; paintButtons();
+  } catch (e) {
+    $('dot').style.background = css('--red');
+    $('rate').textContent = 'box not answering';
+  }
+  setTimeout(pollLive, 60);
+}
+
+async function pollStats() {
+  try {
+    const d = await (await fetch('/api/stats', {cache: 'no-store'})).json();
+    const p = d.phone;
+    if (p) {
+      const colors = {nominal: '--green', fair: '--yellow', serious: '--orange', critical: '--red'};
+      $('heat').textContent = p.thermal;
+      $('heat').style.color = css(colors[p.thermal] || '--text');
+      $('battery').textContent = p.battery >= 0 ? `${p.battery}%` : '–';
+      $('lastheard').textContent = `phone report ${p.age_s}s ago · ${p.charging}`;
+      const now = Date.now();
+      if (!batt.length || batt[batt.length - 1].battery !== p.battery || now - batt[batt.length - 1].t > 30000) batt.push({t: now, battery: p.battery});
+      while (batt.length && now - batt[0].t > WINDOW_MS) batt.shift();
+    }
+  } catch (e) {}
+  setTimeout(pollStats, 3000);
+}
+
+function fmtDur(ms) { const m = Math.floor(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; }
+
+function draw(id, points, key, color, {min, max, rules = [], bands = []} = {}) {
+  const c = $(id), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const now = Date.now(), t0 = now - WINDOW_MS, pad = 34;
+  const vals = points.map(p => p[key]).filter(v => v != null);
+  let lo = Math.min(min, ...vals), hi = Math.max(max, ...vals);
+  const x = t => (t - t0) / WINDOW_MS * (w - pad), y = v => h - 6 - (v - lo) / (hi - lo) * (h - 12);
+  // shaded bands (fan / charging), then grid, rules, line
+  for (const [flag, col] of bands) {
+    g.fillStyle = col; let start = null;
+    for (const p of points) {
+      if (p[flag] && start == null) start = p.t;
+      if (!p[flag] && start != null) { g.fillRect(x(start), 0, x(p.t) - x(start), h); start = null; }
+    }
+    if (start != null) g.fillRect(x(start), 0, x(now) - x(start), h);
+  }
+  g.font = '10px ui-monospace, Menlo, monospace'; g.fillStyle = css('--faint'); g.strokeStyle = '#222'; g.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) { const v = lo + (hi - lo) * i / 3; g.beginPath(); g.moveTo(0, y(v)); g.lineTo(w - pad, y(v)); g.stroke(); g.fillText(v.toFixed(hi - lo < 10 ? 1 : 0), w - pad + 4, y(v) + 3); }
+  g.setLineDash([3, 3]); g.strokeStyle = '#555';
+  for (const r of rules) { g.beginPath(); g.moveTo(0, y(r)); g.lineTo(w - pad, y(r)); g.stroke(); }
+  g.setLineDash([]); g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath();
+  let started = false;
+  for (const p of points) { if (p[key] == null) continue; const px = x(p.t), py = y(p[key]); started ? g.lineTo(px, py) : g.moveTo(px, py); started = true; }
+  g.stroke();
+}
+
+// Second line on an existing chart (same 0–100 scale), drawn after draw().
+function drawExtra(id, points, key, color, lo, hi) {
+  const c = $(id), w = c.clientWidth, h = c.clientHeight, g = c.getContext('2d'), pad = 34, t0 = Date.now() - WINDOW_MS;
+  g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath(); let started = false;
+  for (const p of points) { if (p[key] == null) continue;
+    const x = (p.t - t0) / WINDOW_MS * (w - pad), y = h - 6 - (p[key] - lo) / (hi - lo) * (h - 12);
+    started ? g.lineTo(x, y) : g.moveTo(x, y); started = true; }
+  g.stroke();
+}
+
+async function pollMetrics() {
+  try {
+    const d = await (await fetch('/api/metrics', {method: 'POST'})).json();
+    if (d.error) throw new Error(d.error);
+    $('cpu').textContent = `${d.cpu_pct.toFixed(0)}%`;
+    $('threads').textContent = `${d.threads} threads · ${d.cores} cores`;
+    $('gpu').textContent = d.gpu_stress_pct == null ? (d.llm === 'running' ? `${d.llm_tps} tok/s` : '–') : `${d.gpu_stress_pct.toFixed(0)}%`;
+    $('gpusub').textContent = d.gpu_stress_pct == null ? (d.llm === 'running' ? 'LLM speed (MLX hides GPU %)' : 'stress off') : 'measured from Metal timestamps';
+    $('mem').textContent = `${Math.round(d.mem_mb)} MB`;
+    const now = Date.now();
+    usage.push({t: now, cpu: d.cpu_pct, gpu: d.gpu_stress_pct});
+    while (usage.length && now - usage[0].t > WINDOW_MS) usage.shift();
+  } catch (e) { $('cpu').textContent = '–'; }
+  setTimeout(pollMetrics, 1000);
+}
+
+function frame() {
+  draw('cTemp', live, 'temp', css('--pink'), {min: 25, max: 40, rules: [38, 35], bands: [['fan', 'rgba(10,132,255,.16)']]});
+  draw('cCurrent', live, 'current', css('--orange'), {min: 0, max: 1000, bands: [['charging', 'rgba(48,209,88,.12)']]});
+  draw('cBattery', batt, 'battery', css('--green'), {min: 0, max: 100, rules: [80, 40]});
+  draw('cCpu', usage, 'cpu', css('--cyan'), {min: 0, max: 100});
+  drawExtra('cCpu', usage, 'gpu', css('--blue'), 0, 100);
+  requestAnimationFrame(frame);
+}
+
+let modes = {fan: null, charge: null}, stressOn = null;
+function paintButtons() {
+  document.querySelectorAll('button[data-k]').forEach(b => {
+    const m = modes[b.dataset.k], live = lastLive;
+    const state = m === 'auto' ? 'auto' : (b.dataset.k === 'fan' ? (live?.fan ? 'on' : 'off') : (live?.relay === 'charging' ? 'on' : 'off'));
+    b.classList.toggle('active', m != null && b.dataset.v === state);
+  });
+  $('stressOn').classList.toggle('active', stressOn === true);
+  $('stressOff').classList.toggle('active', stressOn === false);
+}
+let lastLive = null;
+document.querySelectorAll('button[data-k]').forEach(b => b.onclick = async () => {
+  $('msg').textContent = `sending ${b.dataset.k} ${b.dataset.v}…`;
+  try {
+    const d = await (await fetch(`/api/control?${b.dataset.k}=${b.dataset.v}`, {method: 'POST'})).json();
+    if (d.error) throw new Error(d.error);
+    $('msg').textContent = `${b.dataset.k} → ${b.dataset.v} (box confirmed)`;
+  } catch (e) { $('msg').textContent = `box didn't answer: ${e.message}`; }
+});
+async function stress(on) {
+  $('msg').textContent = on == null ? $('msg').textContent : `${on ? 'starting' : 'stopping'} phone stress…`;
+  try {
+    const d = await (await fetch(`/api/stress${on == null ? '' : `?on=${on ? 1 : 0}`}`, {method: 'POST'})).json();
+    if (d.error) throw new Error(d.error);
+    stressOn = d.message === 'stress on';
+    if (on != null) $('msg').textContent = d.message + ' (phone confirmed)';
+  } catch (e) { if (on != null) $('msg').textContent = `phone didn't answer: ${e.message}`; }
+  paintButtons();
+}
+$('stressOn').onclick = () => stress(true);
+$('stressOff').onclick = () => stress(false);
+setInterval(() => stress(null), 5000);
+
+let recLabel = null;
+document.querySelectorAll('button[data-label]').forEach(b => b.onclick = () => {
+  recLabel = b.dataset.label;
+  document.querySelectorAll('button[data-label]').forEach(x => x.classList.toggle('active', x === b));
+  $('recSecs').value = recLabel === 'none' ? '600' : '15';
+});
+async function record(params) {
+  try {
+    const d = await (await fetch(`/api/record${params ? '?' + params : ''}`, {method: 'POST'})).json();
+    if (d.error) throw new Error(d.error);
+    $('recState').textContent = `${d.state} · ${d.count} recordings on phone` + (d.last_saved ? ` · last: ${d.last_saved}` : '');
+  } catch (e) { $('recState').textContent = `phone didn't answer (${e.message})`; }
+}
+$('recGo').onclick = () => recLabel ? record(`label=${recLabel}&secs=${$('recSecs').value}`) : ($('recState').textContent = 'pick a gesture first');
+$('recStop').onclick = () => record('cancel=1');   // stops now; minutes already saved are kept
+$('recSave').onclick = async () => {
+  $('recState').textContent = 'saving…';
+  try {
+    const d = await (await fetch('/api/save', {method: 'POST'})).json();
+    if (d.error) throw new Error(d.error);
+    $('recState').textContent = `saved ${d.saved} new (${d.total} in total) to zeno-desk/${d.folder}`;
+  } catch (e) { $('recState').textContent = `save failed (${e.message})`; }
+};
+setInterval(() => record(null), 1000);
+
+// Live hand skeleton from the phone's hand points, 10 times a second.
+const HAND_BONES = [["wrist","thumb_cmc","thumb_mp","thumb_ip","thumb_tip"],["wrist","index_mcp","index_pip","index_dip","index_tip"],
+  ["wrist","middle_mcp","middle_pip","middle_dip","middle_tip"],["wrist","ring_mcp","ring_pip","ring_dip","ring_tip"],
+  ["wrist","little_mcp","little_pip","little_dip","little_tip"],["index_mcp","middle_mcp","ring_mcp","little_mcp"]];
+const HAND_COLORS = ['#ff4f7b','#f5a65b','#ffd60a','#30d158','#33c7ff','#555'];
+async function pollHand() {
+  try {
+    const d = await (await fetch('/api/hand', {method: 'POST'})).json();
+    if (d.error) throw new Error(d.error);
+    const v = Object.fromEntries(d.columns.map((c, i) => [c, d.values[i]]));
+    const c = $('handCam'), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+    const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    g.strokeStyle = '#151517'; for (let i = 1; i < 3; i++) { g.beginPath(); g.moveTo(w * i / 3, 0); g.lineTo(w * i / 3, h); g.stroke(); }
+    const seen = v.hand === 1;
+    $('handState').textContent = !d.running ? 'camera off' : seen ? 'IN VIEW' : 'NOT SEEN';
+    $('handState').style.color = seen ? css('--green') : css('--faint');
+    if (seen) {
+      const s = h * 0.2, hx = v.hand_x * w, hy = (1 - v.hand_y) * h;
+      const P = j => [hx + v[j + '_x'] * s, hy - v[j + '_y'] * s];
+      HAND_BONES.forEach((bone, i) => { g.strokeStyle = HAND_COLORS[i]; g.lineWidth = 2.5; g.lineCap = 'round'; g.beginPath();
+        bone.forEach((j, k) => { const [x, y] = P(j); k ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); });
+    }
+  } catch (e) { $('handState').textContent = 'phone not answering'; }
+  setTimeout(pollHand, document.hidden ? 1000 : 100);
+}
+pollHand();
+
+let llmRunning = null;
+async function llm(on) {
+  try {
+    const d = await (await fetch(`/api/llm${on == null ? '' : `?on=${on ? 1 : 0}`}`, {method: 'POST'})).json();
+    if (d.error) throw new Error(d.error);
+    llmRunning = d.state !== 'off' && !d.state.startsWith('error');
+    $('llmState').textContent = d.state === 'running'
+      ? `running · Llama 3.2 1B · ${d.tokens_per_s} tokens/s · ${d.tokens} tokens so far` : d.state;
+    $('llmText').textContent = d.state === 'off' ? '' : d.tail;
+  } catch (e) { $('llmState').textContent = `phone didn't answer (${e.message})`; }
+  $('llmOn').classList.toggle('active', llmRunning === true);
+  $('llmOff').classList.toggle('active', llmRunning === false);
+}
+$('llmOn').onclick = () => llm(true);
+$('llmOff').onclick = () => llm(false);
+setInterval(() => llm(null), 700);
+
+pollLive(); pollStats(); pollMetrics(); frame(); stress(null); llm(null);
+</script>
+</body>
+</html>

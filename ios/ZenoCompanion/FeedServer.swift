@@ -17,6 +17,10 @@ final class FeedServer {
 
     private let store: FeedStore
     private var listener: NWListener?
+    /// Set by the desk view, for the dashboard's training-data recorder.
+    var recorder: GestureRecorder?
+    /// Set by the desk view, for the dashboard's live hand skeleton.
+    var gestures: HandGestures?
 
     init(store: FeedStore) { self.store = store }
 
@@ -70,6 +74,54 @@ final class FeedServer {
               Self.allowedSenders.contains(Self.address(host)) else {
             return reply(connection, 403, "not allowed")
         }
+        #if DEBUG
+        // Heat tests from the Mac dashboard: POST /stress?on=1 or ?on=0. Debug builds only.
+        if request.method == "POST", request.path.hasPrefix("/stress") {
+            if request.path.hasSuffix("on=1") { Stress.start() } else if request.path.hasSuffix("on=0") { Stress.stop() }
+            return reply(connection, 200, Stress.running ? "stress on" : "stress off")
+        }
+        // Training data for the gesture model, driven from the Mac dashboard:
+        //   POST /record?label=swipe_left&secs=10   start (3-2-1 countdown on the phone first)
+        //   POST /record                              current state
+        //   POST /recordings                          list of saved recordings
+        //   POST /recfile?name=swipe_left/x.csv       one recording's CSV
+        let url = URLComponents(string: request.path)
+        let query = Dictionary((url?.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
+        if request.method == "POST", url?.path == "/record", let recorder {
+            if let label = query["label"], let secs = Int(query["secs"] ?? "") { recorder.start(label: label, seconds: secs) }
+            if query["cancel"] == "1" { recorder.cancel() }
+            let state: String = switch recorder.state {
+            case .idle: "idle"
+            case .countingDown(let label, let left): "\(label) in \(left)"
+            case .recording(let label, _): "recording \(label)"
+            }
+            let body: [String: Any] = ["state": state, "last_saved": recorder.lastSaved ?? NSNull(),
+                                       "count": GestureRecorder.list().count]
+            return replyJSON(connection, String(decoding: (try? JSONSerialization.data(withJSONObject: body)) ?? Data(), as: UTF8.self))
+        }
+        // Live hand points for the dashboard (numbers only, never the image), same columns as a recording.
+        if request.method == "POST", url?.path == "/hand", let gestures {
+            let body: [String: Any] = ["columns": GestureRecorder.header.split(separator: ",").dropFirst().map(String.init),
+                                       "values": gestures.latestFeatures.map { Double($0) },
+                                       "running": gestures.running]
+            return replyJSON(connection, String(decoding: (try? JSONSerialization.data(withJSONObject: body)) ?? Data(), as: UTF8.self))
+        }
+        if request.method == "POST", url?.path == "/recordings" {
+            return replyJSON(connection, String(decoding: (try? JSONSerialization.data(withJSONObject: GestureRecorder.list())) ?? Data("[]".utf8), as: UTF8.self))
+        }
+        if request.method == "POST", url?.path == "/recfile" {
+            guard let csv = query["name"].flatMap(GestureRecorder.file) else { return reply(connection, 404, "not found") }
+            return replyText(connection, csv)
+        }
+        if request.method == "POST", request.path == "/metrics" {
+            return replyJSON(connection, Metrics.json)
+        }
+        // A real LLM running on the phone: POST /llm?on=1 or ?on=0; plain POST /llm reports its state.
+        if request.method == "POST", request.path.hasPrefix("/llm") {
+            if request.path.hasSuffix("on=1") { LLMStress.start() } else if request.path.hasSuffix("on=0") { LLMStress.stop() }
+            return replyJSON(connection, LLMStress.json)
+        }
+        #endif
         guard request.method == "POST", request.path == "/feed" else { return reply(connection, 404, "not found") }
         let ok = store.accept(request.body)
         reply(connection, ok ? 200 : 400, ok ? "ok" : "not a v1 feed")
@@ -84,6 +136,16 @@ final class FeedServer {
         @unknown default: ""
         }
         return text.replacingOccurrences(of: "::ffff:", with: "").components(separatedBy: "%").first ?? text
+    }
+
+    private func replyText(_ connection: NWConnection, _ body: String) {
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: text/csv\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n"
+        connection.send(content: Data((head + body).utf8), completion: .contentProcessed { _ in connection.cancel() })
+    }
+
+    private func replyJSON(_ connection: NWConnection, _ body: String) {
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n"
+        connection.send(content: Data((head + body).utf8), completion: .contentProcessed { _ in connection.cancel() })
     }
 
     private func reply(_ connection: NWConnection, _ code: Int, _ text: String) {

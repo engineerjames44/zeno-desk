@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gesture Data Viewer</title>
+<style>
+  :root { --bg:#000; --tile:#0f0f10; --line:#222; --text:#c8c8c8; --faint:#6b6b6b; --orange:#f5a65b; --pink:#ff4f7b;
+          --cyan:#33c7ff; --green:#30d158; --blue:#0a84ff; --yellow:#ffd60a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px ui-monospace, "SF Mono", Menlo, monospace; padding:20px; }
+  h1 { font-size:16px; font-weight:500; letter-spacing:.08em; margin:0 0 4px; }
+  p.lead { color:var(--faint); margin:0 0 16px; max-width:900px; line-height:1.5; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+  button { font:inherit; font-size:13px; color:var(--text); background:#1d1d1f; border:1px solid #2c2c2e; border-radius:8px; padding:6px 12px; cursor:pointer; }
+  button.active { background:#3a2a17; border-color:var(--orange); color:var(--orange); }
+  .grid { display:grid; grid-template-columns: minmax(320px, 1.4fr) minmax(280px, 1fr); gap:12px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .tile { background:var(--tile); border-radius:12px; padding:12px 14px; min-width:0; }
+  .label { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; display:flex; justify-content:space-between; gap:4px 8px; flex-wrap:wrap; }
+  #frameInfo { text-transform:none; overflow-wrap:anywhere; }
+  canvas { width:100%; display:block; border-radius:8px; }
+  #cam { aspect-ratio: 4 / 3; background:#060607; border:1px solid var(--line); }
+  #track { height:150px; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  td { padding:3px 6px; border-bottom:1px solid #1a1a1a; }
+  td:first-child { color:var(--faint); }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  #raw { font-size:11px; color:var(--faint); word-break:break-all; line-height:1.5; max-height:120px; overflow:auto; margin-top:10px; }
+  .controls { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  input[type=range] { flex:1; min-width:160px; accent-color: var(--orange); }
+  .note { color:var(--faint); font-size:12px; line-height:1.5; margin-top:8px; }
+  .key span { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<h1>ZENO DESK · GESTURE DATA</h1>
+<p class="lead">Real recordings from the desk phone's front camera. Apple Vision finds 21 points on the hand in every
+frame (10 a second). Only these numbers are saved, never the image. A model learns gestures from how the points move.</p>
+
+<div class="bar" id="gestures"></div>
+<div class="bar" id="takes"></div>
+
+<div class="grid">
+  <div class="tile">
+    <div class="label"><span>What the camera saw, redrawn from the saved points</span><span id="frameInfo"></span></div>
+    <canvas id="cam"></canvas>
+    <div class="controls">
+      <button id="play">pause</button>
+      <input type="range" id="scrub" min="0" value="0">
+      <button id="names" class="active">joint names</button>
+    </div>
+    <div class="note">The skeleton is drawn at the hand's real position in the frame. Left and right are as you see them, facing the phone.</div>
+  </div>
+
+  <div class="tile">
+    <div class="label"><span>This frame = one row of the CSV</span></div>
+    <table id="table"></table>
+    <div id="raw"></div>
+    <div class="note">Joint positions are stored relative to the wrist and scaled by the hand's size, so the same pose gives the
+      same numbers near or far from the camera. hand_x / hand_y say where the hand is, which is what a swipe changes.</div>
+  </div>
+</div>
+
+<div class="tile" style="margin-top:12px">
+  <div class="label"><span>Hand position across the recording</span>
+    <span class="key"><span style="background:var(--cyan)"></span>hand_x (0 = your left, 1 = your right)
+      &nbsp; <span style="background:rgba(245,166,91,.35)"></span>the 1-second window the model reads for one decision</span></div>
+  <canvas id="track"></canvas>
+  <div class="note">A swipe is a ramp in hand_x. Palm and pinch hold still. "No gesture" wanders. Gaps are frames where no hand was seen.</div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const JOINTS = ["wrist","thumb_cmc","thumb_mp","thumb_ip","thumb_tip","index_mcp","index_pip","index_dip","index_tip",
+  "middle_mcp","middle_pip","middle_dip","middle_tip","ring_mcp","ring_pip","ring_dip","ring_tip",
+  "little_mcp","little_pip","little_dip","little_tip"];
+const FINGERS = { thumb:["wrist","thumb_cmc","thumb_mp","thumb_ip","thumb_tip"], index:["wrist","index_mcp","index_pip","index_dip","index_tip"],
+  middle:["wrist","middle_mcp","middle_pip","middle_dip","middle_tip"], ring:["wrist","ring_mcp","ring_pip","ring_dip","ring_tip"],
+  little:["wrist","little_mcp","little_pip","little_dip","little_tip"] };
+const COLORS = { thumb:"#ff4f7b", index:"#f5a65b", middle:"#ffd60a", ring:"#30d158", little:"#33c7ff" };
+const NAMES = { palm:"palm", pinch:"pinch", swipe_left:"swipe left", swipe_right:"swipe right", none:"no gesture" };
+const $ = id => document.getElementById(id);
+
+let gesture = "swipe_right", take = 0, frame = 0, playing = true, showNames = true, last = 0;
+const rec = () => RECORDINGS[gesture][take];
+const col = name => rec().header.indexOf(name);
+const val = (row, name) => row[col(name)];
+
+function buttons() {
+  $('gestures').innerHTML = '';
+  for (const g of Object.keys(RECORDINGS)) {
+    const b = document.createElement('button');
+    b.textContent = NAMES[g]; b.classList.toggle('active', g === gesture);
+    b.onclick = () => { gesture = g; take = 0; frame = 0; buttons(); };
+    $('gestures').appendChild(b);
+  }
+  $('takes').innerHTML = '<span style="color:var(--faint);font-size:12px">recording:</span>';
+  RECORDINGS[gesture].forEach((r, i) => {
+    const b = document.createElement('button');
+    b.textContent = `${i === 0 ? 'first' : 'second'} hand · ${r.rows.length / 10 | 0}s`; b.title = r.file;
+    b.classList.toggle('active', i === take);
+    b.onclick = () => { take = i; frame = 0; buttons(); };
+    $('takes').appendChild(b);
+  });
+  $('scrub').max = rec().rows.length - 1;
+}
+
+function fit(c) {
+  const dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); return [g, w, h];
+}
+
+function drawCam() {
+  const [g, w, h] = fit($('cam')); g.clearRect(0, 0, w, h);
+  const row = rec().rows[frame];
+  // faint grid, like a camera frame
+  g.strokeStyle = '#141416'; g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(w * i / 4, 0); g.lineTo(w * i / 4, h); g.stroke(); g.beginPath(); g.moveTo(0, h * i / 4); g.lineTo(w, h * i / 4); g.stroke(); }
+  // previous positions: a short trail of the wrist
+  g.fillStyle = 'rgba(51,199,255,.25)';
+  for (let k = Math.max(0, frame - 10); k < frame; k++) {
+    const r = rec().rows[k]; if (val(r, 'hand') !== 1) continue;
+    g.beginPath(); g.arc(val(r, 'hand_x') * w, (1 - val(r, 'hand_y')) * h, 3, 0, 7); g.fill();
+  }
+  if (val(row, 'hand') !== 1) {
+    g.fillStyle = '#444'; g.font = '14px ui-monospace, Menlo, monospace'; g.textAlign = 'center';
+    g.fillText('no hand seen in this frame', w / 2, h / 2); g.textAlign = 'left'; return;
+  }
+  const s = h * 0.2;    // drawing scale: one "hand size" (wrist to middle knuckle) in pixels
+  const hx = val(row, 'hand_x') * w, hy = (1 - val(row, 'hand_y')) * h;
+  const P = j => [hx + val(row, j + '_x') * s, hy - val(row, j + '_y') * s];
+  // palm line across the knuckles
+  g.strokeStyle = '#555'; g.lineWidth = 2; g.beginPath();
+  ['index_mcp', 'middle_mcp', 'ring_mcp', 'little_mcp'].forEach((j, i) => { const [x, y] = P(j); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.stroke();
+  for (const [finger, joints] of Object.entries(FINGERS)) {
+    g.strokeStyle = COLORS[finger]; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath();
+    joints.forEach((j, i) => { const [x, y] = P(j); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+  }
+  g.font = '10px ui-monospace, Menlo, monospace';
+  for (const j of JOINTS) {
+    const [x, y] = P(j);
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill();
+    if (showNames && (j.endsWith('tip') || j === 'wrist')) { g.fillStyle = '#9a9a9a'; g.fillText(j, x + 6, y - 5); }
+  }
+}
+
+function drawTrack() {
+  const [g, w, h] = fit($('track')); g.clearRect(0, 0, w, h);
+  const rows = rec().rows, n = rows.length, x = i => i / (n - 1) * w, y = v => h - 8 - v * (h - 16);
+  g.fillStyle = 'rgba(245,166,91,.18)';
+  g.fillRect(x(Math.max(0, frame - 9)), 0, Math.max(2, x(frame) - x(Math.max(0, frame - 9))), h);
+  g.strokeStyle = '#1c1c1e'; g.lineWidth = 1;
+  for (const v of [0, .5, 1]) { g.beginPath(); g.moveTo(0, y(v)); g.lineTo(w, y(v)); g.stroke(); }
+  g.strokeStyle = css('--cyan'); g.lineWidth = 1.6; g.beginPath(); let pen = false;
+  rows.forEach((r, i) => { if (val(r, 'hand') !== 1) { pen = false; return; } const px = x(i), py = y(val(r, 'hand_x')); pen ? g.lineTo(px, py) : g.moveTo(px, py); pen = true; });
+  g.stroke();
+  g.strokeStyle = css('--orange'); g.lineWidth = 1.5; g.beginPath(); g.moveTo(x(frame), 0); g.lineTo(x(frame), h); g.stroke();
+  g.fillStyle = css('--faint'); g.font = '10px ui-monospace, Menlo, monospace';
+  g.fillText('0 s', 2, h - 2); g.fillText(`${(n / 10).toFixed(0)} s`, w - 26, h - 2);
+}
+
+function drawTable() {
+  const r = rec(), row = r.rows[frame];
+  const show = ['hand', 'hand_x', 'hand_y', 'thumb_tip_x', 'thumb_tip_y', 'index_tip_x', 'index_tip_y', 'middle_tip_x', 'middle_tip_y', 'little_tip_x', 'little_tip_y'];
+  $('table').innerHTML = show.map(k => `<tr><td>${k}</td><td class="num">${val(row, k).toFixed(3)}</td></tr>`).join('') +
+    `<tr><td>… ${r.header.length - show.length - 1} more columns</td><td></td></tr>`;
+  $('raw').textContent = r.header.join(',') + '\n' + row.join(',');
+  $('frameInfo').textContent = `frame ${frame + 1} / ${r.rows.length} · ${(frame / 10).toFixed(1)} s · ${r.file}`;
+  $('scrub').value = frame;
+}
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function tick(t) {
+  if (playing && t - last > 100) { frame = (frame + 1) % rec().rows.length; last = t; }
+  drawCam(); drawTrack(); drawTable();
+  requestAnimationFrame(tick);
+}
+
+$('play').onclick = () => { playing = !playing; $('play').textContent = playing ? 'pause' : 'play'; };
+$('scrub').oninput = e => { frame = +e.target.value; playing = false; $('play').textContent = 'play'; };
+$('names').onclick = () => { showNames = !showNames; $('names').classList.toggle('active', showNames); };
+buttons(); requestAnimationFrame(tick);
+</script>
+</body>
+</html>

@@ -6,6 +6,15 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A10000000000000000000040 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000030 /* MLXLLM */; };
+		A10000000000000000000041 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000031 /* MLXLMCommon */; };
+		A10000000000000000000042 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000032 /* MLXHuggingFace */; };
+		A10000000000000000000043 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000033 /* HuggingFace */; };
+		A10000000000000000000044 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000034 /* Tokenizers */; };
+		A10000000000000000000045 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000035 /* MLX */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		A10000000000000000000010 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		A10000000000000000000001 /* ZenoCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZenoCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -16,7 +25,7 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		A10000000000000000000003 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000003 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000040 /* MLXLLM in Frameworks */, A10000000000000000000041 /* MLXLMCommon in Frameworks */, A10000000000000000000042 /* MLXHuggingFace in Frameworks */, A10000000000000000000043 /* HuggingFace in Frameworks */, A10000000000000000000044 /* Tokenizers in Frameworks */, A10000000000000000000045 /* MLX in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -33,7 +42,7 @@
 			dependencies = ();
 			fileSystemSynchronizedGroups = (A10000000000000000000002 /* ZenoCompanion */,);
 			name = ZenoCompanion;
-			packageProductDependencies = ();
+			packageProductDependencies = (A10000000000000000000030 /* MLXLLM */, A10000000000000000000031 /* MLXLMCommon */, A10000000000000000000032 /* MLXHuggingFace */, A10000000000000000000033 /* HuggingFace */, A10000000000000000000034 /* Tokenizers */, A10000000000000000000035 /* MLX */,);
 			productName = ZenoCompanion;
 			productReference = A10000000000000000000001 /* ZenoCompanion.app */;
 			productType = "com.apple.product-type.application";
@@ -50,6 +59,7 @@
 			knownRegions = (en, Base,);
 			mainGroup = A10000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */, A10000000000000000000021 /* XCRemoteSwiftPackageReference "swift-huggingface" */, A10000000000000000000022 /* XCRemoteSwiftPackageReference "swift-transformers" */, A10000000000000000000023 /* XCRemoteSwiftPackageReference "mlx-swift" */,);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000005 /* Products */;
 			projectDirPath = "";
@@ -105,6 +115,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "ZenoCompanion-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Zeno Desk";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Zeno Desk watches for hand gestures. Every frame is checked on the phone and then dropped: nothing is saved or sent.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -127,6 +138,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "ZenoCompanion-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Zeno Desk";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Zeno Desk watches for hand gestures. Every frame is checked on the phone and then dropped: nothing is saved or sent.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -146,6 +158,21 @@
 		A10000000000000000000007 /* Build configuration list for PBXNativeTarget "ZenoCompanion" */ = {isa = XCConfigurationList; buildConfigurations = (A1000000000000000000000E /* Debug */, A1000000000000000000000F /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A1000000000000000000000B /* Build configuration list for PBXProject "ZenoCompanion" */ = {isa = XCConfigurationList; buildConfigurations = (A1000000000000000000000C /* Debug */, A1000000000000000000000D /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
+/* Begin XCRemoteSwiftPackageReference section */
+		A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/ml-explore/mlx-swift-lm"; requirement = {kind = upToNextMinorVersion; minimumVersion = 3.32.3;}; };
+		A10000000000000000000021 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/huggingface/swift-huggingface"; requirement = {kind = upToNextMinorVersion; minimumVersion = 0.13.0;}; };
+		A10000000000000000000022 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/huggingface/swift-transformers"; requirement = {kind = upToNextMinorVersion; minimumVersion = 1.3.5;}; };
+		A10000000000000000000023 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/ml-explore/mlx-swift"; requirement = {kind = upToNextMinorVersion; minimumVersion = 0.32.3;}; };
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10000000000000000000030 /* MLXLLM */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */; productName = MLXLLM; };
+		A10000000000000000000031 /* MLXLMCommon */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */; productName = MLXLMCommon; };
+		A10000000000000000000032 /* MLXHuggingFace */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */; productName = MLXHuggingFace; };
+		A10000000000000000000033 /* HuggingFace */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000021 /* XCRemoteSwiftPackageReference "swift-huggingface" */; productName = HuggingFace; };
+		A10000000000000000000034 /* Tokenizers */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000022 /* XCRemoteSwiftPackageReference "swift-transformers" */; productName = Tokenizers; };
+		A10000000000000000000035 /* MLX */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000023 /* XCRemoteSwiftPackageReference "mlx-swift" */; productName = MLX; };
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A1000000000000000000000A /* Project object */;
 }

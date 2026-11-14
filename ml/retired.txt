@@ -1,0 +1,5 @@
+# Recordings left out of training and testing (files stay in ml/recordings). One glob per line.
+# First swipe round (14 Nov, before 19:50): each recording also contains the hand's return stroke
+# in the opposite direction, which taught the model to confuse swipe left and swipe right.
+swipe_left/swipe_left_20261114T18*.csv
+swipe_right/swipe_right_20261114T18*.csv
