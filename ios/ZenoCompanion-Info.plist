@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_zenodesk._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Zeno Desk sends battery and heat readings to the charge controller on your Wi-Fi.</string>
+	<key>ZenoFeedSenders</key>
+	<string>$(ZENO_FEED_SENDERS)</string>
+</dict>
+</plist>

@@ -1,0 +1,6 @@
+build/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+# Team ID and home network addresses live here, never in git.
+Local.xcconfig

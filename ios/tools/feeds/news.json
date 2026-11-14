@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "sent": "2026-11-12T20:45:00-05:00",
+  "items": [
+    {
+      "kind": "call",
+      "title": "Booked a table for 2",
+      "detail": "Wednesday 18 Nov, 8:00pm, under James. Added to your list.",
+      "at": "2026-11-12T19:33:00-05:00"
+    },
+    {
+      "kind": "calendar",
+      "title": "Tomorrow: 2 things on",
+      "detail": "Dentist at 9:30am. Drinks at 7pm.",
+      "at": "2026-11-12T19:00:00-05:00"
+    },
+    {
+      "kind": "email",
+      "title": "1 email needs you",
+      "detail": "Ask Zeno on Telegram for the details.",
+      "at": "2026-11-12T18:20:00-05:00"
+    },
+    {
+      "kind": "routine",
+      "title": "Friday gig check",
+      "detail": "2 gigs in Boston this weekend.",
+      "at": "2026-11-12T09:00:00-05:00"
+    }
+  ],
+  "ticker": [
+    "Table for 2 booked for Wednesday at 8pm",
+    "Dentist tomorrow at 9:30am",
+    "1 email needs you"
+  ],
+  "live_call": null
+}
